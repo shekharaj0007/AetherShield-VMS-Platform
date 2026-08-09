@@ -46,11 +46,14 @@ class Settings(BaseSettings):
     DEFAULT_FPS: int = 15
     RECORD_SEGMENT_SECONDS: int = 60
 
-    # CORS
+    # CORS — set CORS_ORIGINS as JSON list env on Render, e.g.
+    # ["https://aethershield-ui.onrender.com"]
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
+        "https://aethershield-ui.onrender.com",
+        "https://aethershield-vms-platform.onrender.com",
     ]
 
     # LLM (optional — rule-based fallback if unset)
