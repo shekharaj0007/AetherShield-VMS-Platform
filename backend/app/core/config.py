@@ -40,10 +40,13 @@ class Settings(BaseSettings):
     DETECTION_CONFIDENCE: float = 0.45
     DETECTION_INTERVAL_MS: int = 200
     TRACK_ENABLED: bool = True
+    # Set AI_ENABLED=false on Render free tier (512MB) to avoid OOM
+    AI_ENABLED: bool = True
+    MAX_LIVE_CAMERAS: int = 8
+    DEFAULT_FPS: int = 15
 
     # Streaming
     JPEG_QUALITY: int = 75
-    DEFAULT_FPS: int = 15
     RECORD_SEGMENT_SECONDS: int = 60
 
     # CORS — set CORS_ORIGINS as JSON list env on Render, e.g.

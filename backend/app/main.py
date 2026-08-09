@@ -121,10 +121,16 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         cams = db.query(Camera).all()
+        started = 0
         for cam in cams:
             if not getattr(cam, "enabled", True):
                 cam.status = "offline"
                 continue
+            if started >= settings.MAX_LIVE_CAMERAS:
+                cam.status = "offline"
+                continue
+            # Free-tier / low-memory: disable YOLO to stay under 512MB
+            ai_on = bool(cam.ai_enabled and settings.AI_ENABLED)
             zones_list = db.query(DetectionZone).filter(DetectionZone.camera_id == cam.id).all()
             payload = [
                 {
@@ -140,14 +146,18 @@ async def lifespan(app: FastAPI):
                 for z in zones_list
             ]
             stream_manager.start_camera(
-                cam.id, cam.source_type, cam.source_uri, cam.ai_enabled, payload
+                cam.id, cam.source_type, cam.source_uri, ai_on, payload
             )
             cam.status = "online"
+            started += 1
         db.commit()
     finally:
         db.close()
 
-    print(f"{settings.APP_NAME} v{settings.APP_VERSION} started")
+    print(
+        f"{settings.APP_NAME} v{settings.APP_VERSION} started "
+        f"(cameras={started}, ai={settings.AI_ENABLED})"
+    )
     yield
     stream_manager.stop_all()
 
@@ -178,9 +188,31 @@ app.include_router(reports.router)
 app.include_router(advanced.router)
 
 
+@app.get("/")
+def root():
+    """Helpful landing — this service is the API, not the React UI."""
+    return {
+        "app": settings.APP_NAME,
+        "message": "This is the API backend. Open the frontend UI instead.",
+        "frontend": "https://aethershield-ui.onrender.com",
+        "docs": "/docs",
+        "health": "/api/health",
+        "login_demo": {
+            "email": "admin@aethershield.io",
+            "password": "admin123",
+        },
+    }
+
+
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "ai_enabled": settings.AI_ENABLED,
+        "max_live_cameras": settings.MAX_LIVE_CAMERAS,
+    }
 
 
 @app.websocket("/ws/alerts")
