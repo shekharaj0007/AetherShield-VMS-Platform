@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -196,6 +197,8 @@ def recognize_in_frame(
 
 def seed_demo_faces():
     """Create placeholder known/blacklist entries with synthetic face images."""
+    if os.getenv("SKIP_VIDEO_GEN", "").lower() in ("1", "true", "yes"):
+        return
     if _load_index():
         return
     for name, cat, color in [

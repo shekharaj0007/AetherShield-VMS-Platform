@@ -71,7 +71,8 @@ def generate_sample_videos():
 
 def seed_database(force: bool = False):
     Base.metadata.create_all(bind=engine)
-    generate_sample_videos()
+    if not settings.SKIP_VIDEO_GEN:
+        generate_sample_videos()
     db = SessionLocal()
     try:
         if db.query(User).count() > 0 and not force:

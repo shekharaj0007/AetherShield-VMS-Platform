@@ -115,48 +115,59 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_camera_columns()
     seed_database(force=False)
-    seed_demo_faces()
+    if not settings.SKIP_VIDEO_GEN:
+        seed_demo_faces()
     stream_manager.set_event_handler(handle_detection_event)
 
-    db = SessionLocal()
-    try:
-        cams = db.query(Camera).all()
-        started = 0
-        for cam in cams:
-            if not getattr(cam, "enabled", True):
+    started = 0
+    if settings.AUTO_START_CAMERAS:
+        db = SessionLocal()
+        try:
+            cams = db.query(Camera).all()
+            for cam in cams:
+                if not getattr(cam, "enabled", True):
+                    cam.status = "offline"
+                    continue
+                if started >= settings.MAX_LIVE_CAMERAS:
+                    cam.status = "offline"
+                    continue
+                # Free-tier / low-memory: disable YOLO to stay under 512MB
+                ai_on = bool(cam.ai_enabled and settings.AI_ENABLED)
+                zones_list = db.query(DetectionZone).filter(DetectionZone.camera_id == cam.id).all()
+                payload = [
+                    {
+                        "id": z.id,
+                        "name": z.name,
+                        "shape": z.shape,
+                        "geometry": z.geometry,
+                        "sensitivity": z.sensitivity,
+                        "enabled": z.enabled,
+                        "trigger_classes": z.trigger_classes or [],
+                        "color": z.color,
+                    }
+                    for z in zones_list
+                ]
+                stream_manager.start_camera(
+                    cam.id, cam.source_type, cam.source_uri, ai_on, payload
+                )
+                cam.status = "online"
+                started += 1
+            db.commit()
+        finally:
+            db.close()
+    else:
+        # Mark cameras offline until operator starts them (Render free tier)
+        db = SessionLocal()
+        try:
+            for cam in db.query(Camera).all():
                 cam.status = "offline"
-                continue
-            if started >= settings.MAX_LIVE_CAMERAS:
-                cam.status = "offline"
-                continue
-            # Free-tier / low-memory: disable YOLO to stay under 512MB
-            ai_on = bool(cam.ai_enabled and settings.AI_ENABLED)
-            zones_list = db.query(DetectionZone).filter(DetectionZone.camera_id == cam.id).all()
-            payload = [
-                {
-                    "id": z.id,
-                    "name": z.name,
-                    "shape": z.shape,
-                    "geometry": z.geometry,
-                    "sensitivity": z.sensitivity,
-                    "enabled": z.enabled,
-                    "trigger_classes": z.trigger_classes or [],
-                    "color": z.color,
-                }
-                for z in zones_list
-            ]
-            stream_manager.start_camera(
-                cam.id, cam.source_type, cam.source_uri, ai_on, payload
-            )
-            cam.status = "online"
-            started += 1
-        db.commit()
-    finally:
-        db.close()
+            db.commit()
+        finally:
+            db.close()
 
     print(
         f"{settings.APP_NAME} v{settings.APP_VERSION} started "
-        f"(cameras={started}, ai={settings.AI_ENABLED})"
+        f"(cameras={started}, ai={settings.AI_ENABLED}, autostart={settings.AUTO_START_CAMERAS})"
     )
     yield
     stream_manager.stop_all()

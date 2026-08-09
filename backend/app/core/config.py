@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     AI_ENABLED: bool = True
     MAX_LIVE_CAMERAS: int = 8
     DEFAULT_FPS: int = 15
+    AUTO_START_CAMERAS: bool = True
+    SKIP_VIDEO_GEN: bool = False
 
     # Streaming
     JPEG_QUALITY: int = 75

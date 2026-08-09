@@ -14,18 +14,13 @@ import cv2
 import numpy as np
 
 from app.core.config import get_settings
-from app.ai.detector import (
-    detect_frame,
-    draw_detections,
-    filter_zone_intrusions,
-    Detection,
-    PRIORITY_MAP,
-)
-from app.ai.faces import recognize_in_frame
-from app.ai.plates import extract_plates_from_detections
-from app.ai import heatmap as heatmap_svc
 
 settings = get_settings()
+
+# Heavy AI imports are lazy — keep Render free tier under 512MB
+def _ai():
+    from app.ai import detector, faces, plates, heatmap as heatmap_svc
+    return detector, faces, plates, heatmap_svc
 
 
 @dataclass
@@ -65,7 +60,8 @@ class CameraStream:
         self._last_detect_ts = 0.0
         self._plate_ts = 0.0
         self._event_cooldown: dict[str, float] = {}
-        self.recording = True
+        # Skip continuous MP4 writing on low-memory hosts
+        self.recording = bool(settings.AI_ENABLED and settings.AUTO_START_CAMERAS)
         self._last_faces: list = []
         self._last_plates: list = []
 
@@ -158,12 +154,13 @@ class CameraStream:
                 continue
 
             self.stats.status = "recording" if self.recording else "online"
-            detections: list[Detection] = []
+            detections = []
             now = time.time()
 
             if self.ai_enabled and (now - self._last_detect_ts) * 1000 >= settings.DETECTION_INTERVAL_MS:
+                detector, faces, plates, heatmap_svc = _ai()
                 self._last_detect_ts = now
-                detections = detect_frame(frame, track=True)
+                detections = detector.detect_frame(frame, track=True)
 
                 # Heatmap from detection centers
                 pts = [((d.bbox[0] + d.bbox[2]) / 2, (d.bbox[1] + d.bbox[3]) / 2) for d in detections]
@@ -172,7 +169,7 @@ class CameraStream:
 
                 # Face recognition on persons
                 try:
-                    self._last_faces = recognize_in_frame(frame, detections)
+                    self._last_faces = faces.recognize_in_frame(frame, detections)
                 except Exception:
                     self._last_faces = []
 
@@ -180,7 +177,7 @@ class CameraStream:
                 if now - self._plate_ts > 4.0:
                     self._plate_ts = now
                     try:
-                        self._last_plates = extract_plates_from_detections(frame, detections)
+                        self._last_plates = plates.extract_plates_from_detections(frame, detections)
                     except Exception:
                         self._last_plates = []
 
@@ -196,9 +193,12 @@ class CameraStream:
                 ]
                 self._emit_events(frame, detections)
 
-            annotated = draw_detections(frame, detections, self.zones) if self.ai_enabled else frame
             if self.ai_enabled:
+                detector, _, _, _ = _ai()
+                annotated = detector.draw_detections(frame, detections, self.zones)
                 annotated = self._draw_faces_plates(annotated)
+            else:
+                annotated = frame
 
             with self._lock:
                 self._frame = frame
@@ -221,12 +221,13 @@ class CameraStream:
 
         self._close_writer()
 
-    def _emit_events(self, frame: np.ndarray, detections: list[Detection]):
+    def _emit_events(self, frame: np.ndarray, detections: list):
         if not self.on_event:
             return
+        detector, _, _, _ = _ai()
         now = time.time()
         # Zone intrusions take priority
-        hits = filter_zone_intrusions(detections, self.zones)
+        hits = detector.filter_zone_intrusions(detections, self.zones)
         emitted_keys = set()
 
         for d, zone in hits:
@@ -344,7 +345,7 @@ class CameraStream:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1, cv2.LINE_AA)
         return out
 
-    def _save_snapshot(self, frame: np.ndarray, d: Detection) -> str:
+    def _save_snapshot(self, frame: np.ndarray, d) -> str:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         path = settings.SNAPSHOTS_DIR / f"cam{self.camera_id}_{ts}.jpg"
         h, w = frame.shape[:2]
