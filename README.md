@@ -1,5 +1,8 @@
 # AetherShield VMS
 LIVE DEPLOYMENT AT https://aethershield-ui.onrender.com/
+
+
+
 Enterprise-grade **Smart Video Management System** with live multi-camera monitoring, AI object detection (YOLOv11 + ByteTrack), timeline-linked playback, configurable detection zones, natural-language event search, incident workflow, and analytics — built for the A-1 Launchpad 2026 case study and portfolio demos.
 
 Inspired by commercial platforms (Verkada / Eagle Eye / Milestone), delivered as a full-stack prototype you can run locally without Docker.
