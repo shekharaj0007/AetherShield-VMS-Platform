@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.models import User, Incident, Event, Camera
 from app.schemas import IncidentOut, IncidentUpdate, EventOut
 from app.core.security import require_permission
+from app.services.operations import write_audit
 
 router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
@@ -43,8 +44,18 @@ def update_incident(
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc:
         raise HTTPException(404, "Incident not found")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    previous_status = inc.status
+    changes = body.model_dump(exclude_unset=True)
+    for k, v in changes.items():
         setattr(inc, k, v)
+    if "status" in changes and changes["status"] != previous_status:
+        write_audit(
+            db,
+            user,
+            "incident.status",
+            f"incident:{inc.id}",
+            f"{previous_status}->{changes['status']}",
+        )
     if body.assigned_to is None and "assigned_to" not in body.model_dump(exclude_unset=True):
         pass
     elif body.assigned_to is None:

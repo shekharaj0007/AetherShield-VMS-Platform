@@ -45,6 +45,7 @@ class CameraCreate(BaseModel):
     map_y: float = 0.5
     is_demo: bool = False
     enabled: bool = True
+    site_id: Optional[int] = None
 
 
 class CameraUpdate(BaseModel):
@@ -59,6 +60,7 @@ class CameraUpdate(BaseModel):
     status: Optional[str] = None
     enabled: Optional[bool] = None
     is_demo: Optional[bool] = None
+    site_id: Optional[int] = None
 
 
 class CameraOut(BaseModel):
@@ -77,6 +79,8 @@ class CameraOut(BaseModel):
     thumbnail_path: Optional[str] = None
     is_demo: bool = False
     enabled: bool = True
+    site_id: Optional[int] = None
+    site_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -220,14 +224,109 @@ class AlertOut(BaseModel):
     id: int
     event_id: Optional[int] = None
     camera_id: Optional[int] = None
+    policy_id: Optional[int] = None
     title: str
     message: str
     priority: str
     is_active: bool
+    acknowledged: bool = False
+    acknowledged_by: Optional[int] = None
+    acknowledged_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class SiteCreate(BaseModel):
+    name: str
+    code: str
+    address: str = ""
+
+
+class SiteUpdate(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+
+
+class SiteOut(BaseModel):
+    id: int
+    name: str
+    code: str
+    address: str
+    created_at: datetime
+    camera_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class PolicyCreate(BaseModel):
+    name: str
+    rule_type: str
+    enabled: bool = True
+    config: dict = {}
+    priority: str = "high"
+    notify_channel: str = "webhook"
+
+
+class PolicyUpdate(BaseModel):
+    name: Optional[str] = None
+    rule_type: Optional[str] = None
+    enabled: Optional[bool] = None
+    config: Optional[dict] = None
+    priority: Optional[str] = None
+    notify_channel: Optional[str] = None
+
+
+class PolicyOut(BaseModel):
+    id: int
+    name: str
+    rule_type: str
+    enabled: bool
+    config: dict
+    priority: str
+    notify_channel: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AuditOut(BaseModel):
+    id: int
+    actor: str
+    action: str
+    target: str
+    detail: Optional[str] = None
+    ts: datetime
+
+
+class OutboxOut(BaseModel):
+    id: int
+    alert_id: Optional[int] = None
+    channel: str
+    payload: dict
+    status: str
+    created_at: datetime
+    sent_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class EvidencePackage(BaseModel):
+    event_id: int
+    camera: dict
+    zone: Optional[dict] = None
+    timestamp: datetime
+    track_id: Optional[int] = None
+    clip_window_note: str
+    clip_start: datetime
+    label: str
+    event_type: str
+    priority: str
 
 
 # ── AI Chat / Summary ─────────────────────────────────

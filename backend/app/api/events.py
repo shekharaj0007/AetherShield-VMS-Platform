@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models import User, Event, Camera, Alert, Incident
-from app.schemas import EventOut, EventSearchQuery, ChatRequest, ChatResponse, SummaryResponse
+from app.models import User, Event, Camera, Alert, DetectionZone, Site
+from app.schemas import EventOut, EventSearchQuery, ChatRequest, ChatResponse, SummaryResponse, EvidencePackage
 from app.core.security import require_permission
+from app.services.operations import write_audit
 from app.services.ai_search import search_events, build_summary, chat_with_events
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -96,6 +97,45 @@ def summary(
     return SummaryResponse(**data)
 
 
+@router.get("/{event_id}/evidence", response_model=EvidencePackage)
+def export_evidence(
+    event_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("events:read")),
+):
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event:
+        raise HTTPException(404, "Event not found")
+    camera = db.query(Camera).filter(Camera.id == event.camera_id).first()
+    site_name = None
+    if camera and camera.site_id:
+        site = db.query(Site).filter(Site.id == camera.site_id).first()
+        site_name = site.name if site else None
+    zone = None
+    if event.zone_id:
+        z = db.query(DetectionZone).filter(DetectionZone.id == event.zone_id).first()
+        if z:
+            zone = {"id": z.id, "name": z.name}
+    ts = event.timestamp
+    return EvidencePackage(
+        event_id=event.id,
+        camera={
+            "id": camera.id if camera else event.camera_id,
+            "name": camera.name if camera else None,
+            "location": camera.location if camera else None,
+            "site": site_name,
+        },
+        zone=zone,
+        timestamp=ts,
+        track_id=event.track_id,
+        clip_window_note="Clip window starts at event time minus 10 seconds.",
+        clip_start=ts - timedelta(seconds=10),
+        label=event.label,
+        event_type=event.event_type,
+        priority=event.priority,
+    )
+
+
 @router.get("/{event_id}", response_model=EventOut)
 def get_event(
     event_id: int,
@@ -112,14 +152,20 @@ def get_event(
 def acknowledge(
     event_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("events:write")),
+    user: User = Depends(require_permission("events:write")),
 ):
     e = db.query(Event).filter(Event.id == event_id).first()
     if not e:
         raise HTTPException(404, "Event not found")
     e.acknowledged = True
-    alert = db.query(Alert).filter(Alert.event_id == event_id, Alert.is_active == True).first()  # noqa: E712
-    if alert:
+    alerts = db.query(Alert).filter(Alert.event_id == event_id, Alert.is_active == True).all()  # noqa: E712
+    for alert in alerts:
         alert.is_active = False
+        alert.acknowledged = True
+        alert.acknowledged_by = user.id
+        alert.acknowledged_at = datetime.now(timezone.utc)
+        write_audit(db, user, "alert.acknowledge", f"alert:{alert.id}", alert.title)
+    if not alerts:
+        write_audit(db, user, "alert.acknowledge", f"event:{event_id}", e.label)
     db.commit()
     return {"ok": True}

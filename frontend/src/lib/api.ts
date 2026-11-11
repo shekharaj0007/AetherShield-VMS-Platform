@@ -53,6 +53,74 @@ export type Camera = {
   thumbnail_path?: string | null
   is_demo?: boolean
   enabled?: boolean
+  site_id?: number | null
+  site_name?: string | null
+}
+
+export type Site = {
+  id: number
+  name: string
+  code: string
+  address: string
+  created_at: string
+  camera_count: number
+}
+
+export type AlertPolicy = {
+  id: number
+  name: string
+  rule_type: string
+  enabled: boolean
+  config: Record<string, unknown>
+  priority: string
+  notify_channel: string
+  created_at: string
+  updated_at: string
+}
+
+export type AlertItem = {
+  id: number
+  event_id?: number | null
+  camera_id?: number | null
+  policy_id?: number | null
+  title: string
+  message: string
+  priority: string
+  is_active: boolean
+  acknowledged: boolean
+  created_at: string
+}
+
+export type AuditRow = {
+  id: number
+  actor: string
+  action: string
+  target: string
+  detail?: string | null
+  ts: string
+}
+
+export type OutboxRow = {
+  id: number
+  alert_id?: number | null
+  channel: string
+  payload: Record<string, unknown>
+  status: string
+  created_at: string
+  sent_at?: string | null
+}
+
+export type EvidencePackage = {
+  event_id: number
+  camera: { id: number; name?: string | null; location?: string | null; site?: string | null }
+  zone?: { id: number; name: string } | null
+  timestamp: string
+  track_id?: number | null
+  clip_window_note: string
+  clip_start: string
+  label: string
+  event_type: string
+  priority: string
 }
 
 export type Zone = {

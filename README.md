@@ -31,6 +31,13 @@ Inspired by commercial platforms (Verkada / Eagle Eye / Milestone), delivered as
 - Interactive camera floor-plan map
 - JWT auth with Admin / Operator / Viewer roles
 - Dark enterprise UI (responsive)
+- Sites (HQ and Warehouse) with a dashboard site filter
+- Alert policies evaluated on stored events (after-hours zone entry, loitering by track id, unknown face)
+- Operator audit log (login, alert acknowledge, incident status, policy edits)
+- Notification outbox (webhook or email, simulated delivery — no outbound internet calls)
+- Evidence package export for an event (camera, zone, timestamp, track id, clip window = event time − 10s)
+
+Viewers can read sites, alerts, policies, and evidence. Operators can acknowledge alerts and mark the outbox sent. Only admins edit policies or open the audit log.
 
 ## Tech stack
 
@@ -60,6 +67,9 @@ First launch will:
 - Create `storage/vms.db`
 - Generate synthetic demo videos under `sample-data/videos/`
 - Seed users, 4 cameras, zones, sample events
+- Seed sites (HQ, Warehouse), two alert policies, and alerts derived from those events
+
+Detection still starts if the YOLO weight file is not downloaded. The API boots, serves seeded events, and the operations features run on stored events. YOLO loads only when a live camera actually runs detection.
 
 ### 2. Frontend
 

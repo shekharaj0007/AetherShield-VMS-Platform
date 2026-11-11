@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, type DashboardStats } from '@/lib/api'
+import { api, type DashboardStats, type Site } from '@/lib/api'
 import { PRIORITY_COLOR, formatTime, cn } from '@/lib/utils'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar,
@@ -7,9 +8,17 @@ import {
 import { Camera, AlertTriangle, HardDrive, Activity, Cpu, Wifi } from 'lucide-react'
 
 export function DashboardPage() {
+  const [siteId, setSiteId] = useState<number | ''>('')
+  const { data: sites = [] } = useQuery({
+    queryKey: ['sites'],
+    queryFn: async () => (await api.get<Site[]>('/api/sites')).data,
+  })
   const { data, isLoading } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: async () => (await api.get<DashboardStats>('/api/dashboard')).data,
+    queryKey: ['dashboard', siteId],
+    queryFn: async () =>
+      (await api.get<DashboardStats>('/api/dashboard', {
+        params: siteId ? { site_id: siteId } : {},
+      })).data,
     refetchInterval: 5000,
   })
 
@@ -21,9 +30,24 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5 animate-fade-up">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Operations Dashboard</h1>
-        <p className="text-sm text-muted mt-1">Live camera health, detections, and storage intelligence</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Operations Dashboard</h1>
+          <p className="text-sm text-muted mt-1">Live camera health, detections, and storage intelligence</p>
+        </div>
+        <label className="text-xs text-muted">
+          Site
+          <select
+            className="mt-1 block h-9 rounded-md border border-border bg-panel px-3 text-sm text-ink"
+            value={siteId}
+            onChange={(e) => setSiteId(e.target.value ? Number(e.target.value) : '')}
+          >
+            <option value="">All sites</option>
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>{s.name} ({s.camera_count})</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -97,7 +121,7 @@ export function DashboardPage() {
               <div key={c.id} className="flex items-center justify-between rounded-md border border-border bg-surface-2 px-3 py-2">
                 <div>
                   <div className="text-sm">{c.name}</div>
-                  <div className="text-[10px] text-muted">{c.resolution} · {Math.round(c.fps)} FPS</div>
+                  <div className="text-[10px] text-muted">{c.site_name || 'Unassigned'} · {c.resolution} · {Math.round(c.fps)} FPS</div>
                 </div>
                 <span className={cn(
                   'text-[10px] uppercase tracking-wider font-semibold',

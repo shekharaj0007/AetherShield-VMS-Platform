@@ -21,6 +21,11 @@ ROLE_PERMISSIONS = {
         "recordings:read", "recordings:write",
         "users:manage", "reports:export", "analytics:read",
         "incidents:manage", "system:admin",
+        "sites:read", "sites:write",
+        "alerts:read", "alerts:ack",
+        "policies:read", "policies:write",
+        "audit:read",
+        "outbox:read", "outbox:deliver",
     },
     "operator": {
         "cameras:read", "cameras:write",
@@ -29,10 +34,15 @@ ROLE_PERMISSIONS = {
         "recordings:read", "recordings:write",
         "reports:export", "analytics:read",
         "incidents:manage",
+        "sites:read",
+        "alerts:read", "alerts:ack",
+        "policies:read",
+        "outbox:read", "outbox:deliver",
     },
     "viewer": {
         "cameras:read", "events:read", "zones:read",
         "recordings:read", "analytics:read",
+        "sites:read", "alerts:read", "policies:read", "outbox:read",
     },
 }
 

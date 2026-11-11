@@ -1,7 +1,7 @@
 import { NavLink, Outlet, Navigate } from 'react-router-dom'
 import {
   LayoutDashboard, Video, Film, Search, ShieldAlert, Map,
-  LogOut, Bell, FileDown, Bot, Activity, Camera, ScanFace,
+  LogOut, Bell, FileDown, Bot, Activity, Camera, ScanFace, ClipboardList,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,7 @@ const nav = [
   { to: '/cameras', label: 'Cameras', icon: Camera },
   { to: '/faces', label: 'Faces & Plates', icon: ScanFace },
   { to: '/events', label: 'Events', icon: Activity },
+  { to: '/operations', label: 'Operations', icon: Bell },
   { to: '/search', label: 'AI Search', icon: Search },
   { to: '/incidents', label: 'Incidents', icon: ShieldAlert },
   { to: '/map', label: 'Camera Map', icon: Map },
@@ -24,6 +25,14 @@ export function AppShell() {
   const { token, user, logout } = useAuthStore()
   useAlertSocket()
   if (!token) return <Navigate to="/login" replace />
+
+  const items = [
+    ...nav.slice(0, 7),
+    ...(user?.role === 'admin'
+      ? [{ to: '/audit', label: 'Audit Log', icon: ClipboardList }]
+      : []),
+    ...nav.slice(7),
+  ]
 
   return (
     <div className="min-h-screen flex">
@@ -40,7 +49,7 @@ export function AppShell() {
           </div>
         </div>
         <nav className="flex-1 p-2 space-y-0.5">
-          {nav.map(({ to, label, icon: Icon }) => (
+          {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

@@ -11,6 +11,8 @@ import { MapPage } from '@/pages/MapPage'
 import { ChatPage } from '@/pages/ChatPage'
 import { CamerasPage } from '@/pages/CamerasPage'
 import { FacesPage } from '@/pages/FacesPage'
+import { OperationsPage } from '@/pages/OperationsPage'
+import { AuditPage } from '@/pages/AuditPage'
 
 export default function App() {
   return (
@@ -23,6 +25,8 @@ export default function App() {
         <Route path="/cameras" element={<CamerasPage />} />
         <Route path="/faces" element={<FacesPage />} />
         <Route path="/events" element={<EventsPage />} />
+        <Route path="/operations" element={<OperationsPage />} />
+        <Route path="/audit" element={<AuditPage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/incidents" element={<IncidentsPage />} />
         <Route path="/map" element={<MapPage />} />

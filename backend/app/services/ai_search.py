@@ -158,9 +158,12 @@ def _apply_hour_filter(events: list[Event], hour_filter) -> list[Event]:
     return out
 
 
-def build_summary(db: Session, hours: int = 24) -> dict:
+def build_summary(db: Session, hours: int = 24, camera_ids: Optional[list[int]] = None) -> dict:
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    events = db.query(Event).filter(Event.timestamp >= since).all()
+    q = db.query(Event).filter(Event.timestamp >= since)
+    if camera_ids is not None:
+        q = q.filter(Event.camera_id.in_(camera_ids or [-1]))
+    events = q.all()
     by_type: dict[str, int] = {}
     by_priority: dict[str, int] = {}
     by_camera: dict[int, int] = {}

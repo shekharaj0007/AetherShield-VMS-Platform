@@ -13,10 +13,11 @@ from app.core.config import get_settings
 from app.db.session import SessionLocal, Base, engine
 from app.db.seed import seed_database
 from app.db.migrate import ensure_camera_columns
-from app.models import Event, Alert, Incident, Camera, DetectionZone
+from app.models import Event, Incident, Camera, DetectionZone
+from app.services.operations import evaluate_policies, ensure_operations_data, record_alert
 from app.services.stream_manager import stream_manager
 from app.ai.faces import seed_demo_faces
-from app.api import auth, cameras, zones, events, streaming, dashboard, incidents, reports, advanced
+from app.api import auth, cameras, zones, events, streaming, dashboard, incidents, reports, advanced, operations
 
 settings = get_settings()
 _main_loop: asyncio.AbstractEventLoop | None = None
@@ -75,20 +76,21 @@ def handle_detection_event(payload: dict):
         event_id = event.id
 
         if event.priority in ("critical", "high"):
-            alert = Alert(
-                event_id=event.id,
-                camera_id=event.camera_id,
+            channel = "email" if event.priority == "critical" else "webhook"
+            record_alert(
+                db,
+                event=event,
                 title=event.label,
                 message=f"{event.label} ({event.confidence:.0%})",
                 priority=event.priority,
-                is_active=True,
+                channel=channel,
             )
-            db.add(alert)
             if event.priority == "critical":
                 existing = db.query(Incident).filter(Incident.event_id == event.id).first()
                 if not existing:
                     db.add(Incident(event_id=event.id, status="open"))
 
+        evaluate_policies(db, event)
         db.commit()
     except Exception as e:
         db.rollback()
@@ -115,6 +117,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_camera_columns()
     seed_database(force=False)
+    ensure_operations_data()
     if not settings.SKIP_VIDEO_GEN:
         seed_demo_faces()
     stream_manager.set_event_handler(handle_detection_event)
@@ -197,6 +200,7 @@ app.include_router(dashboard.router)
 app.include_router(incidents.router)
 app.include_router(reports.router)
 app.include_router(advanced.router)
+app.include_router(operations.router)
 
 
 @app.get("/")

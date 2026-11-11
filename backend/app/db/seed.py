@@ -11,7 +11,13 @@ import cv2
 from app.core.config import get_settings
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine, Base
-from app.models import User, Camera, DetectionZone, Event, Alert, Incident, Recording
+from app.models import (
+    User, Camera, DetectionZone, Event, Alert, Incident, Recording,
+    NotificationOutbox, AuditLog, AlertPolicy, Site,
+)
+from app.services.operations import (
+    apply_sites, record_alert, seed_default_policies, tune_seed_events_for_policies,
+)
 
 settings = get_settings()
 
@@ -79,7 +85,10 @@ def seed_database(force: bool = False):
             return
 
         if force:
-            for model in (Incident, Alert, Event, Recording, DetectionZone, Camera, User):
+            for model in (
+                NotificationOutbox, AuditLog, Incident, Alert, Event, Recording,
+                DetectionZone, Camera, AlertPolicy, Site, User,
+            ):
                 db.query(model).delete()
             db.commit()
 
@@ -221,19 +230,42 @@ def seed_database(force: bool = False):
             ))
         db.add_all(sample_events)
         db.flush()
+        tune_seed_events_for_policies(sample_events, now)
+        for ev in sample_events:
+            if ev.id is None:
+                db.add(ev)
+        # Stored unknown-face signal so that rule can run without a live detector.
+        sample_events.append(Event(
+            camera_id=cameras[2].id,
+            zone_id=None,
+            event_type="face",
+            label="Unknown face: Unknown Person #17",
+            confidence=0.7,
+            priority="high",
+            track_id=None,
+            bbox={"x": 0.4, "y": 0.2, "w": 0.12, "h": 0.18},
+            timestamp=now - timedelta(minutes=8),
+            metadata_json={
+                "face_name": "Unknown Person #17",
+                "face_category": "unknown",
+                "seeded": True,
+            },
+        ))
+        db.add(sample_events[-1])
+        db.flush()
 
-        # Incidents for critical events
+        # Incidents for critical events, plus an outbox row per alert.
         for ev in sample_events:
             if ev.priority == "critical":
                 db.add(Incident(event_id=ev.id, status="open", notes="Auto-created from critical alert"))
-                db.add(Alert(
-                    event_id=ev.id,
-                    camera_id=ev.camera_id,
+                record_alert(
+                    db,
+                    event=ev,
                     title=ev.label,
                     message=f"{ev.label} (confidence {ev.confidence:.0%})",
                     priority="critical",
-                    is_active=True,
-                ))
+                    channel="email",
+                )
 
         # Link sample recordings to generated videos
         for cam in cameras:
@@ -253,6 +285,9 @@ def seed_database(force: bool = False):
                     file_size_bytes=dest.stat().st_size,
                     resolution=cam.resolution,
                 ))
+
+        apply_sites(db)
+        seed_default_policies(db, actor=users[0])
 
         db.commit()
         print("Database seeded successfully.")

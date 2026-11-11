@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models import User, Camera, DetectionZone
+from app.models import User, Camera, DetectionZone, Site
 from app.schemas import CameraCreate, CameraUpdate, CameraOut, DemoToggle, RemoteCameraConnect
 from app.core.security import require_permission
 from app.services.stream_manager import stream_manager
+from app.services.operations import attach_default_site
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
 
@@ -39,6 +40,17 @@ def _stop(cam: Camera):
     cam.status = "offline"
 
 
+def _decorate(db: Session, cam: Camera, sites: dict[int, str] | None = None) -> CameraOut:
+    data = CameraOut.model_validate(cam)
+    if cam.site_id:
+        if sites is None:
+            site = db.query(Site).filter(Site.id == cam.site_id).first()
+            data.site_name = site.name if site else None
+        else:
+            data.site_name = sites.get(cam.site_id)
+    return data
+
+
 @router.get("", response_model=list[CameraOut])
 def list_cameras(
     include_disabled: bool = Query(False),
@@ -49,7 +61,8 @@ def list_cameras(
     cams = q.all()
     if not include_disabled:
         cams = [c for c in cams if getattr(c, "enabled", True)]
-    return cams
+    sites = {s.id: s.name for s in db.query(Site).all()}
+    return [_decorate(db, c, sites) for c in cams]
 
 
 @router.get("/demo/status")
@@ -116,10 +129,11 @@ def connect_remote_camera(
         existing.name = body.name or existing.name
         existing.location = body.location or existing.location
         existing.ai_enabled = body.ai_enabled
+        attach_default_site(db, existing)
         _start(db, existing)
         db.commit()
         db.refresh(existing)
-        return existing
+        return _decorate(db, existing)
 
     cam = Camera(
         name=body.name,
@@ -136,12 +150,14 @@ def connect_remote_camera(
         map_y=0.75,
     )
     db.add(cam)
+    db.flush()
+    attach_default_site(db, cam)
     db.commit()
     db.refresh(cam)
     _start(db, cam)
     db.commit()
     db.refresh(cam)
-    return cam
+    return _decorate(db, cam)
 
 
 @router.post("/{camera_id}/disconnect")
@@ -203,7 +219,7 @@ def get_camera(camera_id: int, db: Session = Depends(get_db), _: User = Depends(
     cam = db.query(Camera).filter(Camera.id == camera_id).first()
     if not cam:
         raise HTTPException(404, "Camera not found")
-    return cam
+    return _decorate(db, cam)
 
 
 @router.post("", response_model=CameraOut)
@@ -217,12 +233,15 @@ def create_camera(
     data.setdefault("enabled", True)
     cam = Camera(**data)
     db.add(cam)
+    db.flush()
+    attach_default_site(db, cam)
     db.commit()
     db.refresh(cam)
     if cam.enabled:
         _start(db, cam)
         db.commit()
-    return cam
+        db.refresh(cam)
+    return _decorate(db, cam)
 
 
 @router.patch("/{camera_id}", response_model=CameraOut)
@@ -237,6 +256,7 @@ def update_camera(
         raise HTTPException(404, "Camera not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(cam, k, v)
+    attach_default_site(db, cam)
     db.commit()
     db.refresh(cam)
     if cam.enabled:
@@ -244,7 +264,8 @@ def update_camera(
     else:
         _stop(cam)
     db.commit()
-    return cam
+    db.refresh(cam)
+    return _decorate(db, cam)
 
 
 @router.delete("/{camera_id}")

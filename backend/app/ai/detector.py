@@ -78,22 +78,48 @@ class DetectorState:
 _state = DetectorState()
 
 
+def _existing_weight() -> Optional[Path]:
+    """Return a local YOLO weight file. Never triggers a download."""
+    name = Path(settings.YOLO_MODEL)
+    candidates = [name, settings.BASE_DIR / name.name, Path.cwd() / name.name]
+    if name.is_absolute():
+        candidates.insert(0, name)
+    home = Path.home()
+    candidates.extend([
+        home / ".cache" / "ultralytics" / name.name,
+        home / "AppData" / "Roaming" / "Ultralytics" / name.name,
+        home / "AppData" / "Roaming" / "Ultralytics" / "weights" / name.name,
+    ])
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
 def _load_model():
     with _state.lock:
-        if _state.loaded:
+        if _state.loaded or _state.load_error:
+            return
+        weight = _existing_weight()
+        if weight is None:
+            _state.load_error = (
+                f"{settings.YOLO_MODEL} is not on disk; using motion detection"
+            )
+            _state.model = None
             return
         try:
             from ultralytics import YOLO
-            _state.model = YOLO(settings.YOLO_MODEL)
+            _state.model = YOLO(str(weight))
             _state.loaded = True
             _state.load_error = None
         except Exception as e:
             _state.load_error = str(e)
             _state.loaded = False
+            _state.model = None
 
 
 def ensure_model():
-    if not _state.loaded:
+    if not _state.loaded and not _state.load_error:
         _load_model()
     return _state.model
 

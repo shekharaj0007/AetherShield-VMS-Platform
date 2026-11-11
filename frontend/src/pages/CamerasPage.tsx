@@ -260,6 +260,7 @@ export function CamerasPage() {
           <thead>
             <tr className="text-left text-xs text-muted border-b border-border bg-surface-2">
               <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Site</th>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Source</th>
               <th className="px-4 py-3">Status</th>
@@ -273,6 +274,7 @@ export function CamerasPage() {
                   <div>{c.name}</div>
                   <div className="text-[10px] text-muted">{c.location}</div>
                 </td>
+                <td className="px-4 py-2.5 text-muted">{c.site_name || '—'}</td>
                 <td className="px-4 py-2.5">
                   <span className={cn(
                     'text-[10px] uppercase tracking-wider font-semibold',
@@ -309,7 +311,7 @@ export function CamerasPage() {
             ))}
             {cameras.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted">No cameras configured</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-muted">No cameras configured</td>
               </tr>
             )}
           </tbody>

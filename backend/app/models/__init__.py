@@ -59,10 +59,25 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Site(Base):
+    """A physical site that owns many cameras (HQ, Warehouse, …)."""
+
+    __tablename__ = "sites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str] = mapped_column(String(50), unique=True)
+    address: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    cameras = relationship("Camera", back_populates="site")
+
+
 class Camera(Base):
     __tablename__ = "cameras"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     location: Mapped[str] = mapped_column(String(255), default="")
     source_type: Mapped[str] = mapped_column(String(50), default="file")  # file | webcam | rtsp
@@ -79,6 +94,7 @@ class Camera(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    site = relationship("Site", back_populates="cameras")
     zones = relationship("DetectionZone", back_populates="camera", cascade="all, delete-orphan")
     events = relationship("Event", back_populates="camera", cascade="all, delete-orphan")
     recordings = relationship("Recording", back_populates="camera", cascade="all, delete-orphan")
@@ -152,14 +168,63 @@ class Incident(Base):
     event = relationship("Event", back_populates="incident")
 
 
+class AlertPolicy(Base):
+    """Stored alert rule evaluated against detection events."""
+
+    __tablename__ = "alert_policies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    # zone_after_hours | loitering | unknown_face
+    rule_type: Mapped[str] = mapped_column(String(50), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    priority: Mapped[str] = mapped_column(String(50), default="high")
+    notify_channel: Mapped[str] = mapped_column(String(20), default="webhook")  # webhook | email
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int | None] = mapped_column(ForeignKey("events.id"), nullable=True)
     camera_id: Mapped[int | None] = mapped_column(ForeignKey("cameras.id"), nullable=True)
+    policy_id: Mapped[int | None] = mapped_column(ForeignKey("alert_policies.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(Text)
     priority: Mapped[str] = mapped_column(String(50), default="high")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+    acknowledged_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditLog(Base):
+    """Operator audit trail: login, alert ack, incident status, policy edits."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    actor_email: Mapped[str] = mapped_column(String(255), default="")
+    action: Mapped[str] = mapped_column(String(100), index=True)
+    target: Mapped[str] = mapped_column(String(255), default="")
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class NotificationOutbox(Base):
+    """Simulated delivery queue. Nothing is sent to the public internet."""
+
+    __tablename__ = "notification_outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), nullable=True, index=True)
+    channel: Mapped[str] = mapped_column(String(20))  # webhook | email
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending | sent
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
