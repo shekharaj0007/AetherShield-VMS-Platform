@@ -5,7 +5,8 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Camera as CamIcon, Usb, Wifi, Unplug, MonitorPlay } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { cn } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth'
 
 type Probe = { ok: boolean; index: number; message: string; width?: number; height?: number }
 type DemoStatus = { demo_count: number; enabled: boolean }
@@ -13,6 +14,8 @@ type DemoStatus = { demo_count: number; enabled: boolean }
 export function CamerasPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const role = useAuthStore((s) => s.user?.role)
+  const canHeartbeat = role === 'admin' || role === 'operator'
   const [name, setName] = useState('Laptop Webcam')
   const [index, setIndex] = useState(0)
   const [remoteName, setRemoteName] = useState('Phone / IP Camera')
@@ -92,6 +95,16 @@ export function CamerasPage() {
       refreshAll()
     },
     onError: () => toast.error('Disconnect failed'),
+  })
+
+  const heartbeat = useMutation({
+    mutationFn: async (id: number) => (await api.post(`/api/cameras/${id}/heartbeat`)).data,
+    onSuccess: (cam: Camera) => {
+      toast.success(`${cam.name} heartbeat recorded`)
+      refreshAll()
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+    onError: () => toast.error('Heartbeat needs an operator or admin'),
   })
 
   const disconnectAllLive = useMutation({
@@ -264,6 +277,7 @@ export function CamerasPage() {
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Source</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Last seen</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -288,9 +302,27 @@ export function CamerasPage() {
                   {c.source_uri}
                 </td>
                 <td className="px-4 py-2.5">
-                  {c.enabled === false ? 'disabled' : c.status}
+                  <span className={cn(
+                    'text-[10px] uppercase tracking-wider font-semibold',
+                    c.status === 'offline' || c.status === 'error' ? 'text-danger' : 'text-ok',
+                  )}>
+                    {c.enabled === false ? 'disabled' : c.status}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-xs text-muted whitespace-nowrap">
+                  {c.last_seen_at ? formatTime(c.last_seen_at) : '—'}
                 </td>
                 <td className="px-4 py-2.5 whitespace-nowrap">
+                  {canHeartbeat && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={heartbeat.isPending || c.enabled === false}
+                      onClick={() => heartbeat.mutate(c.id)}
+                    >
+                      Heartbeat
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => navigate(`/playback?camera=${c.id}`)}>Open</Button>
                   <Button
                     size="sm"
@@ -311,7 +343,7 @@ export function CamerasPage() {
             ))}
             {cameras.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted">No cameras configured</td>
+                <td colSpan={7} className="px-4 py-8 text-center text-muted">No cameras configured</td>
               </tr>
             )}
           </tbody>

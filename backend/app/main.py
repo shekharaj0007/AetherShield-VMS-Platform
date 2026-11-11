@@ -15,9 +15,10 @@ from app.db.seed import seed_database
 from app.db.migrate import ensure_camera_columns
 from app.models import Event, Incident, Camera, DetectionZone
 from app.services.operations import evaluate_policies, ensure_operations_data, record_alert
+from app.services.floor import ensure_floor_data, evaluate_watchlist, sync_camera_health
 from app.services.stream_manager import stream_manager
 from app.ai.faces import seed_demo_faces
-from app.api import auth, cameras, zones, events, streaming, dashboard, incidents, reports, advanced, operations
+from app.api import auth, cameras, zones, events, streaming, dashboard, incidents, reports, advanced, operations, floor
 
 settings = get_settings()
 _main_loop: asyncio.AbstractEventLoop | None = None
@@ -91,6 +92,7 @@ def handle_detection_event(payload: dict):
                     db.add(Incident(event_id=event.id, status="open"))
 
         evaluate_policies(db, event)
+        evaluate_watchlist(db, event)
         db.commit()
     except Exception as e:
         db.rollback()
@@ -118,6 +120,7 @@ async def lifespan(app: FastAPI):
     ensure_camera_columns()
     seed_database(force=False)
     ensure_operations_data()
+    ensure_floor_data()
     if not settings.SKIP_VIDEO_GEN:
         seed_demo_faces()
     stream_manager.set_event_handler(handle_detection_event)
@@ -129,10 +132,8 @@ async def lifespan(app: FastAPI):
             cams = db.query(Camera).all()
             for cam in cams:
                 if not getattr(cam, "enabled", True):
-                    cam.status = "offline"
                     continue
                 if started >= settings.MAX_LIVE_CAMERAS:
-                    cam.status = "offline"
                     continue
                 # Free-tier / low-memory: disable YOLO to stay under 512MB
                 ai_on = bool(cam.ai_enabled and settings.AI_ENABLED)
@@ -153,17 +154,16 @@ async def lifespan(app: FastAPI):
                 stream_manager.start_camera(
                     cam.id, cam.source_type, cam.source_uri, ai_on, payload
                 )
-                cam.status = "online"
                 started += 1
+            sync_camera_health(db)
             db.commit()
         finally:
             db.close()
     else:
-        # Streams start on demand when a viewer opens the MJPEG feed (Render free tier)
+        # Streams start on demand. Status still follows the 15-minute heartbeat window.
         db = SessionLocal()
         try:
-            for cam in db.query(Camera).all():
-                cam.status = "online" if getattr(cam, "enabled", True) else "offline"
+            sync_camera_health(db)
             db.commit()
         finally:
             db.close()
@@ -201,6 +201,7 @@ app.include_router(incidents.router)
 app.include_router(reports.router)
 app.include_router(advanced.router)
 app.include_router(operations.router)
+app.include_router(floor.router)
 
 
 @app.get("/")

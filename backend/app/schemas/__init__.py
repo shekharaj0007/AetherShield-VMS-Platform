@@ -81,6 +81,7 @@ class CameraOut(BaseModel):
     enabled: bool = True
     site_id: Optional[int] = None
     site_name: Optional[str] = None
+    last_seen_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -346,3 +347,70 @@ class SummaryResponse(BaseModel):
     summary_text: str
     stats: dict[str, Any]
     highlights: list[str]
+
+
+class ShiftNoteCreate(BaseModel):
+    body: str
+
+
+class ShiftNoteOut(BaseModel):
+    id: int
+    author_id: Optional[int] = None
+    author_name: Optional[str] = None
+    body: str
+    created_at: datetime
+
+
+class ShiftCreate(BaseModel):
+    site_id: int
+    operator_id: int
+    starts_at: datetime
+    ends_at: datetime
+
+
+class ShiftOut(BaseModel):
+    id: int
+    site_id: int
+    site_name: Optional[str] = None
+    operator_id: int
+    operator_name: Optional[str] = None
+    operator_email: Optional[str] = None
+    starts_at: datetime
+    ends_at: datetime
+    current: bool = False
+    notes: list[ShiftNoteOut] = []
+
+
+class OperatorOption(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+
+class WatchlistCreate(BaseModel):
+    kind: str
+    value: str
+
+
+class WatchlistOut(BaseModel):
+    id: int
+    kind: str
+    value: str
+    enabled: bool
+    note: str = ""
+    created_at: datetime
+    match_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class WatchlistHitOut(BaseModel):
+    id: int
+    entry_id: int
+    event_id: int
+    alert_id: Optional[int] = None
+    kind: str
+    value: str
+    event_label: str
+    created_at: datetime

@@ -14,10 +14,12 @@ from app.db.session import SessionLocal, engine, Base
 from app.models import (
     User, Camera, DetectionZone, Event, Alert, Incident, Recording,
     NotificationOutbox, AuditLog, AlertPolicy, Site,
+    WatchlistHit, ShiftNote, Shift, WatchlistEntry,
 )
 from app.services.operations import (
     apply_sites, record_alert, seed_default_policies, tune_seed_events_for_policies,
 )
+from app.services.floor import seed_camera_heartbeats, seed_current_shift, seed_watchlist
 
 settings = get_settings()
 
@@ -89,6 +91,7 @@ def seed_database(force: bool = False):
 
         if force:
             for model in (
+                WatchlistHit, ShiftNote, Shift, WatchlistEntry,
                 NotificationOutbox, AuditLog, Incident, Alert, Event, Recording,
                 DetectionZone, Camera, AlertPolicy, Site, User,
             ):
@@ -291,6 +294,9 @@ def seed_database(force: bool = False):
 
         apply_sites(db)
         seed_default_policies(db, actor=users[0])
+        seed_camera_heartbeats(db, now)
+        seed_current_shift(db, now)
+        seed_watchlist(db)
 
         db.commit()
         print("Database seeded successfully.")

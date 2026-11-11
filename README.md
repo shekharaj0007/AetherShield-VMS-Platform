@@ -36,8 +36,11 @@ Inspired by commercial platforms (Verkada / Eagle Eye / Milestone), delivered as
 - Operator audit log (login, alert acknowledge, incident status, policy edits)
 - Notification outbox (webhook or email, simulated delivery — no outbound internet calls)
 - Evidence package export for an event (camera, zone, timestamp, track id, clip window = event time − 10s)
+- Camera health from heartbeats (`POST /api/cameras/{id}/heartbeat`). A camera with no heartbeat for 15 minutes is offline. The dashboard shows online and offline counts. Seed data leaves one camera offline and the rest online.
+- Shifts (site, operator, start, end) with one current shift seeded. Operators add checklist notes. Admins create shifts. Viewers can read.
+- Watchlist for a plate or a person label. A match creates an alert through the existing alert path and a match row. Seeded events do not store plate text (`metadata.plate` is only written by live plate detection), so the demo entry matches object class `person` (`metadata.object`) plus the label `Person detected`.
 
-Viewers can read sites, alerts, policies, and evidence. Operators can acknowledge alerts and mark the outbox sent. Only admins edit policies or open the audit log.
+Viewers can read sites, alerts, policies, evidence, shifts, and the watchlist. Operators can acknowledge alerts, mark the outbox sent, send camera heartbeats, add shift notes, and add watchlist entries. Only admins create shifts, edit policies, or open the audit log.
 
 ## Tech stack
 
@@ -67,7 +70,7 @@ First launch will:
 - Create `storage/vms.db`
 - Generate synthetic demo videos under `sample-data/videos/`
 - Seed users, 4 cameras, zones, sample events
-- Seed sites (HQ, Warehouse), two alert policies, and alerts derived from those events
+- Seed sites (HQ, Warehouse), two alert policies, alerts derived from those events, camera heartbeats, one current shift, and one person watchlist entry
 
 Detection still starts if the YOLO weight file is not downloaded. The API boots, serves seeded events, and the operations features run on stored events. YOLO loads only when a live camera actually runs detection.
 

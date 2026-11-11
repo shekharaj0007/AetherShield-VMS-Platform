@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,7 @@ from app.schemas import CameraCreate, CameraUpdate, CameraOut, DemoToggle, Remot
 from app.core.security import require_permission
 from app.services.stream_manager import stream_manager
 from app.services.operations import attach_default_site
+from app.services.floor import presented_status, touch_heartbeat
 from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
@@ -40,11 +43,16 @@ def _start(db: Session, cam: Camera):
 
 def _stop(cam: Camera):
     stream_manager.stop_camera(cam.id)
+    # Drop the heartbeat so health agrees with a stopped camera.
+    cam.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=16)
     cam.status = "offline"
 
 
 def _decorate(db: Session, cam: Camera, sites: dict[int, str] | None = None) -> CameraOut:
     data = CameraOut.model_validate(cam)
+    stream = stream_manager.get(cam.id)
+    stream_status = stream.stats.status if stream else None
+    data.status = presented_status(cam, stream_status)
     if cam.site_id:
         if sites is None:
             site = db.query(Site).filter(Site.id == cam.site_id).first()
@@ -78,7 +86,7 @@ def demo_status(
     return {
         "demo_count": len(demos),
         "enabled": enabled,
-        "cameras": [CameraOut.model_validate(c) for c in demos],
+        "cameras": [_decorate(db, c) for c in demos],
     }
 
 
@@ -217,6 +225,22 @@ def disconnect_all_live(
     }
 
 
+@router.post("/{camera_id}/heartbeat", response_model=CameraOut)
+def camera_heartbeat(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("cameras:write")),
+):
+    """Record a heartbeat. No heartbeat for 15 minutes marks the camera offline."""
+    cam = db.query(Camera).filter(Camera.id == camera_id).first()
+    if not cam:
+        raise HTTPException(404, "Camera not found")
+    touch_heartbeat(cam)
+    db.commit()
+    db.refresh(cam)
+    return _decorate(db, cam)
+
+
 @router.get("/{camera_id}", response_model=CameraOut)
 def get_camera(camera_id: int, db: Session = Depends(get_db), _: User = Depends(require_permission("cameras:read"))):
     cam = db.query(Camera).filter(Camera.id == camera_id).first()
@@ -327,7 +351,7 @@ def camera_health(
     stream = stream_manager.get(camera_id)
     stats = stream.stats if stream else None
     return {
-        "camera": CameraOut.model_validate(cam),
+        "camera": _decorate(db, cam),
         "live_fps": stats.fps if stats else 0,
         "frame_count": stats.frame_count if stats else 0,
         "stream_status": stats.status if stats else "offline",

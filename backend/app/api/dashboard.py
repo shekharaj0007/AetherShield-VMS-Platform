@@ -13,13 +13,15 @@ from app.core.security import require_permission
 from app.core.config import get_settings
 from app.services.stream_manager import stream_manager
 from app.services.ai_search import build_summary
+from app.services.floor import presented_status
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 settings = get_settings()
 
 
-def _camera_out(cam: Camera, sites: dict[int, str]) -> CameraOut:
+def _camera_out(cam: Camera, sites: dict[int, str], status: str) -> CameraOut:
     data = CameraOut.model_validate(cam)
+    data.status = status
     if cam.site_id:
         data.site_name = sites.get(cam.site_id)
     return data
@@ -39,14 +41,16 @@ def dashboard(
         q = q.filter(Camera.site_id == site_id)
     cameras = q.all()
     camera_ids = [c.id for c in cameras]
-    # Refresh live status from streams
+    # Online means a heartbeat in the last 15 minutes. A live stream does not replace that.
+    statuses: dict[int, str] = {}
     for cam in cameras:
         stream = stream_manager.get(cam.id)
-        if stream:
-            cam.status = stream.stats.status if stream.stats.status != "error" else "error"
-            cam.fps = stream.stats.fps or cam.fps
+        if stream and stream.stats.fps:
+            cam.fps = stream.stats.fps
+        stream_status = stream.stats.status if stream else None
+        statuses[cam.id] = presented_status(cam, stream_status)
 
-    online = sum(1 for c in cameras if c.status in ("online", "recording"))
+    online = sum(1 for status in statuses.values() if status == "online")
     offline = len(cameras) - online
 
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -113,7 +117,7 @@ def dashboard(
         detections_by_type=by_type,
         weekly_detections=weekly,
         recent_events=recent_out,
-        camera_health=[_camera_out(c, sites) for c in cameras],
+        camera_health=[_camera_out(c, sites, statuses[c.id]) for c in cameras],
         active_alerts_list=[AlertOut.model_validate(a).model_dump() for a in active_alerts],
         insights=summary["stats"],
     )

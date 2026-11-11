@@ -50,3 +50,4 @@ def ensure_camera_columns(bind: Engine | None = None):
         _add_column(conn, "alerts", "acknowledged", "BOOLEAN DEFAULT 0")
         _add_column(conn, "alerts", "acknowledged_by", "INTEGER")
         _add_column(conn, "alerts", "acknowledged_at", "DATETIME")
+        _add_column(conn, "cameras", "last_seen_at", "DATETIME")

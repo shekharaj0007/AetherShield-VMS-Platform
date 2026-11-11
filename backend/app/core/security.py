@@ -26,6 +26,8 @@ ROLE_PERMISSIONS = {
         "policies:read", "policies:write",
         "audit:read",
         "outbox:read", "outbox:deliver",
+        "shifts:read", "shifts:write", "shifts:note",
+        "watchlist:read", "watchlist:write",
     },
     "operator": {
         "cameras:read", "cameras:write",
@@ -38,11 +40,14 @@ ROLE_PERMISSIONS = {
         "alerts:read", "alerts:ack",
         "policies:read",
         "outbox:read", "outbox:deliver",
+        "shifts:read", "shifts:note",
+        "watchlist:read", "watchlist:write",
     },
     "viewer": {
         "cameras:read", "events:read", "zones:read",
         "recordings:read", "analytics:read",
         "sites:read", "alerts:read", "policies:read", "outbox:read",
+        "shifts:read", "watchlist:read",
     },
 }
 

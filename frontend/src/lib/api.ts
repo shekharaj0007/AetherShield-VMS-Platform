@@ -55,6 +55,7 @@ export type Camera = {
   enabled?: boolean
   site_id?: number | null
   site_name?: string | null
+  last_seen_at?: string | null
 }
 
 export type Site = {
@@ -187,6 +188,54 @@ export type Incident = {
   created_at: string
   updated_at: string
   event?: EventItem | null
+}
+
+export type ShiftNote = {
+  id: number
+  author_id?: number | null
+  author_name?: string | null
+  body: string
+  created_at: string
+}
+
+export type Shift = {
+  id: number
+  site_id: number
+  site_name?: string | null
+  operator_id: number
+  operator_name?: string | null
+  operator_email?: string | null
+  starts_at: string
+  ends_at: string
+  current: boolean
+  notes: ShiftNote[]
+}
+
+export type OperatorOption = {
+  id: number
+  full_name: string
+  email: string
+}
+
+export type WatchEntry = {
+  id: number
+  kind: string
+  value: string
+  enabled: boolean
+  note: string
+  created_at: string
+  match_count: number
+}
+
+export type WatchHit = {
+  id: number
+  entry_id: number
+  event_id: number
+  alert_id?: number | null
+  kind: string
+  value: string
+  event_label: string
+  created_at: string
 }
 
 export type Recording = {

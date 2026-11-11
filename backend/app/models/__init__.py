@@ -92,6 +92,7 @@ class Camera(Base):
     thumbnail_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     site = relationship("Site", back_populates="cameras")
@@ -228,3 +229,60 @@ class NotificationOutbox(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending | sent
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Shift(Base):
+    """Operator coverage window for one site."""
+
+    __tablename__ = "shifts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), index=True)
+    operator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    site = relationship("Site")
+    operator = relationship("User")
+    notes = relationship("ShiftNote", back_populates="shift", cascade="all, delete-orphan")
+
+
+class ShiftNote(Base):
+    """Checklist note added by an operator during a shift."""
+
+    __tablename__ = "shift_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    shift_id: Mapped[int] = mapped_column(ForeignKey("shifts.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    shift = relationship("Shift", back_populates="notes")
+    author = relationship("User")
+
+
+class WatchlistEntry(Base):
+    """Plate text or person label to match against stored event metadata."""
+
+    __tablename__ = "watchlist_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20), index=True)  # plate | person
+    value: Mapped[str] = mapped_column(String(255))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str] = mapped_column(String(512), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class WatchlistHit(Base):
+    """One row per watchlist entry and event. The alert itself uses the shared alert path."""
+
+    __tablename__ = "watchlist_hits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("watchlist_entries.id", ondelete="CASCADE"), index=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

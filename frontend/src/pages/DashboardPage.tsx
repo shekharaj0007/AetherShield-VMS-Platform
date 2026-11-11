@@ -51,7 +51,13 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat icon={Camera} label="Cameras Online" value={`${data.online_cameras}/${data.total_cameras}`} accent="text-ok" />
+        <Stat
+          icon={Camera}
+          label="Camera Health"
+          value={`${data.online_cameras} online`}
+          sub={`${data.offline_cameras} offline · no heartbeat for 15 min`}
+          accent="text-ok"
+        />
         <Stat icon={Activity} label="Today's Detections" value={String(data.today_detections)} accent="text-accent" />
         <Stat icon={AlertTriangle} label="Active Alerts" value={String(data.active_alerts)} accent="text-danger" />
         <Stat
@@ -115,13 +121,20 @@ export function DashboardPage() {
         </div>
 
         <div className="rounded-xl border border-border bg-panel p-4">
-          <h2 className="text-sm font-medium mb-3 flex items-center gap-2"><Wifi className="h-4 w-4 text-ok" /> Camera Health</h2>
+          <h2 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <Wifi className="h-4 w-4 text-ok" /> Camera Health
+            <span className="ml-auto text-[10px] uppercase tracking-wider text-muted font-normal">
+              {data.online_cameras} online · {data.offline_cameras} offline
+            </span>
+          </h2>
           <div className="space-y-2 max-h-64 overflow-auto">
             {data.camera_health.map((c) => (
               <div key={c.id} className="flex items-center justify-between rounded-md border border-border bg-surface-2 px-3 py-2">
                 <div>
                   <div className="text-sm">{c.name}</div>
-                  <div className="text-[10px] text-muted">{c.site_name || 'Unassigned'} · {c.resolution} · {Math.round(c.fps)} FPS</div>
+                  <div className="text-[10px] text-muted">
+                    {c.site_name || 'Unassigned'} · {c.last_seen_at ? `seen ${formatTime(c.last_seen_at)}` : 'no heartbeat'}
+                  </div>
                 </div>
                 <span className={cn(
                   'text-[10px] uppercase tracking-wider font-semibold',

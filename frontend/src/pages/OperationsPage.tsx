@@ -1,5 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type AlertItem, type AlertPolicy, type OutboxRow, type Site } from '@/lib/api'
+import {
+  api,
+  type AlertItem,
+  type AlertPolicy,
+  type OperatorOption,
+  type OutboxRow,
+  type Shift,
+  type Site,
+  type WatchEntry,
+  type WatchHit,
+} from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { PRIORITY_COLOR, formatTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
@@ -23,8 +33,11 @@ function ruleSummary(policy: AlertPolicy) {
 export function OperationsPage() {
   const user = useAuthStore((s) => s.user)
   const isAdmin = user?.role === 'admin'
+  const isOperator = user?.role === 'operator'
   const canAck = user?.role === 'admin' || user?.role === 'operator'
   const canDeliver = canAck
+  const canNote = canAck
+  const canWatchWrite = canAck
   const qc = useQueryClient()
 
   const { data: sites = [] } = useQuery({
@@ -44,16 +57,43 @@ export function OperationsPage() {
     queryKey: ['outbox'],
     queryFn: async () => (await api.get<OutboxRow[]>('/api/outbox')).data,
   })
+  const { data: shifts = [] } = useQuery({
+    queryKey: ['shifts'],
+    queryFn: async () => (await api.get<Shift[]>('/api/shifts')).data,
+  })
+  const { data: operators = [] } = useQuery({
+    queryKey: ['shift-operators'],
+    queryFn: async () => (await api.get<OperatorOption[]>('/api/shifts/operators')).data,
+    enabled: isAdmin,
+  })
+  const { data: watchlist = [] } = useQuery({
+    queryKey: ['watchlist'],
+    queryFn: async () => (await api.get<WatchEntry[]>('/api/watchlist')).data,
+  })
+  const { data: watchHits = [] } = useQuery({
+    queryKey: ['watch-hits'],
+    queryFn: async () => (await api.get<WatchHit[]>('/api/watchlist/hits')).data,
+  })
 
   const [name, setName] = useState('Unknown face')
   const [ruleType, setRuleType] = useState('unknown_face')
   const [channel, setChannel] = useState<'webhook' | 'email'>('webhook')
+  const [shiftSite, setShiftSite] = useState<number | ''>('')
+  const [shiftOperator, setShiftOperator] = useState<number | ''>('')
+  const [shiftStart, setShiftStart] = useState('')
+  const [shiftEnd, setShiftEnd] = useState('')
+  const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({})
+  const [watchKind, setWatchKind] = useState<'person' | 'plate'>('person')
+  const [watchValue, setWatchValue] = useState('')
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['policies'] })
     qc.invalidateQueries({ queryKey: ['ops-alerts'] })
     qc.invalidateQueries({ queryKey: ['outbox'] })
     qc.invalidateQueries({ queryKey: ['dashboard'] })
+    qc.invalidateQueries({ queryKey: ['shifts'] })
+    qc.invalidateQueries({ queryKey: ['watchlist'] })
+    qc.invalidateQueries({ queryKey: ['watch-hits'] })
   }
 
   const savePolicy = useMutation({
@@ -95,6 +135,45 @@ export function OperationsPage() {
     onError: () => toast.error('Operators acknowledge alerts'),
   })
 
+  const createShift = useMutation({
+    mutationFn: async () =>
+      (await api.post('/api/shifts', {
+        site_id: Number(shiftSite),
+        operator_id: Number(shiftOperator),
+        starts_at: new Date(shiftStart).toISOString(),
+        ends_at: new Date(shiftEnd).toISOString(),
+      })).data,
+    onSuccess: () => {
+      toast.success('Shift created')
+      setShiftStart('')
+      setShiftEnd('')
+      refresh()
+    },
+    onError: () => toast.error('Only admins can create shifts'),
+  })
+
+  const addNote = useMutation({
+    mutationFn: async ({ id, body }: { id: number; body: string }) =>
+      (await api.post(`/api/shifts/${id}/notes`, { body })).data,
+    onSuccess: (_data, vars) => {
+      toast.success('Checklist note added')
+      setNoteDrafts((prev) => ({ ...prev, [vars.id]: '' }))
+      refresh()
+    },
+    onError: () => toast.error('Operators add checklist notes'),
+  })
+
+  const createWatch = useMutation({
+    mutationFn: async () =>
+      (await api.post('/api/watchlist', { kind: watchKind, value: watchValue.trim() })).data,
+    onSuccess: () => {
+      toast.success('Watchlist entry saved and matched against stored events')
+      setWatchValue('')
+      refresh()
+    },
+    onError: () => toast.error('Could not add watchlist entry'),
+  })
+
   const deliver = useMutation({
     mutationFn: async () => (await api.post('/api/outbox/deliver')).data as { delivered: number },
     onSuccess: (data) => {
@@ -109,7 +188,7 @@ export function OperationsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Operations</h1>
         <p className="text-sm text-muted mt-1">
-          Sites, alert policies, acknowledgements, and the notification outbox
+          Sites, shifts, watchlist, alert policies, acknowledgements, and the notification outbox
         </p>
       </div>
 
@@ -122,6 +201,177 @@ export function OperationsPage() {
           </div>
         ))}
       </div>
+
+      <section className="rounded-xl border border-border bg-panel p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-medium">Shifts</h2>
+            <p className="text-[11px] text-muted mt-1">
+              {isAdmin ? 'Admins create shifts.' : isOperator ? 'Add a checklist note on a shift.' : 'Read only.'}
+            </p>
+          </div>
+        </div>
+        <div className="space-y-3">
+          {shifts.map((shift) => (
+            <div key={shift.id} className="rounded-lg border border-border bg-surface-2 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium">
+                    {shift.site_name || 'Site'} · {shift.operator_name || shift.operator_email}
+                  </div>
+                  <div className="text-xs text-muted mt-1">
+                    {formatTime(shift.starts_at)} → {formatTime(shift.ends_at)}
+                  </div>
+                </div>
+                {shift.current && (
+                  <span className="text-[10px] uppercase tracking-wider text-ok">Current</span>
+                )}
+              </div>
+              <ul className="mt-2 space-y-1">
+                {shift.notes.map((note) => (
+                  <li key={note.id} className="text-xs text-muted">
+                    <span className="text-ink">{note.body}</span>
+                    {' · '}{note.author_name || 'operator'} · {formatTime(note.created_at)}
+                  </li>
+                ))}
+                {shift.notes.length === 0 && <li className="text-xs text-muted">No checklist notes yet.</li>}
+              </ul>
+              {canNote && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <input
+                    className="h-8 flex-1 min-w-[12rem] rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                    placeholder="Checklist note"
+                    value={noteDrafts[shift.id] || ''}
+                    onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [shift.id]: e.target.value }))}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={addNote.isPending || !(noteDrafts[shift.id] || '').trim()}
+                    onClick={() => addNote.mutate({ id: shift.id, body: noteDrafts[shift.id] || '' })}
+                  >
+                    Add note
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+          {shifts.length === 0 && <p className="text-sm text-muted">No shifts yet.</p>}
+        </div>
+        {isAdmin && (
+          <div className="flex flex-wrap gap-2 items-end border-t border-border pt-3">
+            <label className="text-xs text-muted">
+              Site
+              <select
+                className="mt-1 block h-9 rounded-md border border-border bg-surface px-3 text-sm text-ink"
+                value={shiftSite}
+                onChange={(e) => setShiftSite(e.target.value ? Number(e.target.value) : '')}
+              >
+                <option value="">Select</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>{site.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-muted">
+              Operator
+              <select
+                className="mt-1 block h-9 rounded-md border border-border bg-surface px-3 text-sm text-ink"
+                value={shiftOperator}
+                onChange={(e) => setShiftOperator(e.target.value ? Number(e.target.value) : '')}
+              >
+                <option value="">Select</option>
+                {operators.map((op) => (
+                  <option key={op.id} value={op.id}>{op.full_name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-muted">
+              Start
+              <input
+                type="datetime-local"
+                className="mt-1 block h-9 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                value={shiftStart}
+                onChange={(e) => setShiftStart(e.target.value)}
+              />
+            </label>
+            <label className="text-xs text-muted">
+              End
+              <input
+                type="datetime-local"
+                className="mt-1 block h-9 rounded-md border border-border bg-surface px-2 text-sm text-ink"
+                value={shiftEnd}
+                onChange={(e) => setShiftEnd(e.target.value)}
+              />
+            </label>
+            <Button
+              size="sm"
+              disabled={createShift.isPending || !shiftSite || !shiftOperator || !shiftStart || !shiftEnd}
+              onClick={() => createShift.mutate()}
+            >
+              Add shift
+            </Button>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-border bg-panel p-4 space-y-3">
+        <div>
+          <h2 className="text-sm font-medium">Watchlist</h2>
+          <p className="text-[11px] text-muted mt-1">
+            A plate matches metadata.plate. Seeded events have no plate text, so the demo entry matches object class person plus the label “Person detected”. Matches create an alert on the existing alert path.
+          </p>
+        </div>
+        <div className="space-y-2">
+          {watchlist.map((entry) => (
+            <div key={entry.id} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-accent">{entry.kind}</span>
+                <span className="text-sm font-medium">{entry.value}</span>
+                <span className="text-[10px] text-muted ml-auto">{entry.match_count} match{entry.match_count === 1 ? '' : 'es'}</span>
+              </div>
+              {entry.note && <p className="text-xs text-muted mt-1">{entry.note}</p>}
+            </div>
+          ))}
+          {watchlist.length === 0 && <p className="text-sm text-muted">No watchlist entries.</p>}
+        </div>
+        {watchHits.length > 0 && (
+          <div className="text-xs text-muted space-y-1">
+            {watchHits.slice(0, 6).map((hit) => (
+              <div key={hit.id}>
+                {hit.value} → {hit.event_label} · alert #{hit.alert_id ?? '—'} · {formatTime(hit.created_at)}
+              </div>
+            ))}
+          </div>
+        )}
+        {canWatchWrite && (
+          <div className="flex flex-wrap gap-2 items-end border-t border-border pt-3">
+            <label className="text-xs text-muted">
+              Kind
+              <select
+                className="mt-1 block h-9 rounded-md border border-border bg-surface px-3 text-sm text-ink"
+                value={watchKind}
+                onChange={(e) => setWatchKind(e.target.value as 'person' | 'plate')}
+              >
+                <option value="person">person label</option>
+                <option value="plate">plate</option>
+              </select>
+            </label>
+            <label className="text-xs text-muted">
+              Value
+              <input
+                className="mt-1 block h-9 rounded-md border border-border bg-surface px-3 text-sm text-ink"
+                placeholder={watchKind === 'plate' ? 'DL10AB2424' : 'Person detected'}
+                value={watchValue}
+                onChange={(e) => setWatchValue(e.target.value)}
+              />
+            </label>
+            <Button size="sm" disabled={createWatch.isPending || !watchValue.trim()} onClick={() => createWatch.mutate()}>
+              Add to watchlist
+            </Button>
+          </div>
+        )}
+      </section>
 
       <section className="rounded-xl border border-border bg-panel p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
