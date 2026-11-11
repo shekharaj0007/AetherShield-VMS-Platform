@@ -426,6 +426,19 @@ class StreamManager:
             self._streams[camera_id] = stream
             stream.start()
 
+    def ensure_camera(self, camera_id: int, source_type: str, source_uri: str, ai_enabled: bool = True, zones: list | None = None) -> CameraStream:
+        """Start the stream only if it is not already running (on-demand viewing)."""
+        with self._lock:
+            existing = self._streams.get(camera_id)
+            if existing:
+                return existing
+            stream = CameraStream(camera_id, source_type, source_uri, ai_enabled, self.on_event)
+            if zones:
+                stream.update_zones(zones)
+            self._streams[camera_id] = stream
+            stream.start()
+            return stream
+
     def stop_camera(self, camera_id: int):
         with self._lock:
             s = self._streams.pop(camera_id, None)

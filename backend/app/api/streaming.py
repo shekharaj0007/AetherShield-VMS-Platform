@@ -14,6 +14,7 @@ from app.schemas import RecordingOut
 from app.core.security import require_permission, decode_token
 from app.core.config import get_settings
 from app.services.stream_manager import stream_manager
+from app.api.cameras import _zones_payload
 
 router = APIRouter(tags=["streaming"])
 settings = get_settings()
@@ -34,10 +35,30 @@ def _auth_from_query(token: Optional[str]) -> User:
         db.close()
 
 
+def _ensure_stream(camera_id: int):
+    stream = stream_manager.get(camera_id)
+    if stream:
+        return stream
+    db = SessionLocal()
+    try:
+        cam = db.query(Camera).filter(Camera.id == camera_id).first()
+        if not cam or not getattr(cam, "enabled", True):
+            return None
+        stream = stream_manager.ensure_camera(
+            cam.id, cam.source_type, cam.source_uri,
+            bool(cam.ai_enabled and settings.AI_ENABLED), _zones_payload(db, cam.id),
+        )
+        cam.status = "online"
+        db.commit()
+        return stream
+    finally:
+        db.close()
+
+
 @router.get("/api/stream/{camera_id}/mjpeg")
 async def mjpeg_stream(camera_id: int, token: str = Query(...)):
     _auth_from_query(token)
-    stream = stream_manager.get(camera_id)
+    stream = _ensure_stream(camera_id)
     if not stream:
         raise HTTPException(404, "Stream not running")
 
@@ -60,7 +81,7 @@ async def mjpeg_stream(camera_id: int, token: str = Query(...)):
 @router.get("/api/stream/{camera_id}/snapshot")
 def snapshot(camera_id: int, token: str = Query(...)):
     _auth_from_query(token)
-    stream = stream_manager.get(camera_id)
+    stream = _ensure_stream(camera_id)
     if not stream:
         raise HTTPException(404, "Stream not running")
     jpeg = stream.get_jpeg(annotated=True)

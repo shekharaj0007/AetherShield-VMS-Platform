@@ -159,11 +159,11 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
     else:
-        # Mark cameras offline until operator starts them (Render free tier)
+        # Streams start on demand when a viewer opens the MJPEG feed (Render free tier)
         db = SessionLocal()
         try:
             for cam in db.query(Camera).all():
-                cam.status = "offline"
+                cam.status = "online" if getattr(cam, "enabled", True) else "offline"
             db.commit()
         finally:
             db.close()
@@ -227,6 +227,7 @@ def health():
         "version": settings.APP_VERSION,
         "ai_enabled": settings.AI_ENABLED,
         "max_live_cameras": settings.MAX_LIVE_CAMERAS,
+        "live_streams": len(stream_manager.list_stats()),
     }
 
 

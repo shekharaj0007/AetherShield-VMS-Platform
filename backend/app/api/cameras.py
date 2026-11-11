@@ -7,8 +7,10 @@ from app.schemas import CameraCreate, CameraUpdate, CameraOut, DemoToggle, Remot
 from app.core.security import require_permission
 from app.services.stream_manager import stream_manager
 from app.services.operations import attach_default_site
+from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
+settings = get_settings()
 
 
 def _zones_payload(db: Session, camera_id: int) -> list[dict]:
@@ -30,7 +32,8 @@ def _zones_payload(db: Session, camera_id: int) -> list[dict]:
 
 def _start(db: Session, cam: Camera):
     stream_manager.start_camera(
-        cam.id, cam.source_type, cam.source_uri, cam.ai_enabled, _zones_payload(db, cam.id)
+        cam.id, cam.source_type, cam.source_uri,
+        bool(cam.ai_enabled and settings.AI_ENABLED), _zones_payload(db, cam.id),
     )
     cam.status = "online"
 

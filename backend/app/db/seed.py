@@ -21,6 +21,9 @@ from app.services.operations import (
 
 settings = get_settings()
 
+# Kept small so generation and decoding stay cheap on 0.1-CPU free hosting
+DEMO_WIDTH, DEMO_HEIGHT, DEMO_FPS = 640, 360, 10
+
 
 def generate_sample_videos():
     """Create synthetic demo videos with moving shapes if none exist."""
@@ -35,7 +38,8 @@ def generate_sample_videos():
         path = settings.SAMPLE_DIR / name
         if path.exists():
             continue
-        w, h, fps, nframes = 960, 540, 15, 15 * 20  # 20 seconds
+        w, h, fps = DEMO_WIDTH, DEMO_HEIGHT, DEMO_FPS
+        nframes = fps * 20  # 20 seconds
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(str(path), fourcc, fps, (w, h))
         for i in range(nframes):
@@ -77,8 +81,7 @@ def generate_sample_videos():
 
 def seed_database(force: bool = False):
     Base.metadata.create_all(bind=engine)
-    if not settings.SKIP_VIDEO_GEN:
-        generate_sample_videos()
+    generate_sample_videos()
     db = SessionLocal()
     try:
         if db.query(User).count() > 0 and not force:
@@ -109,8 +112,8 @@ def seed_database(force: bool = False):
                 source_type="file",
                 source_uri="sample-data/videos/gate_a.mp4",
                 status="online",
-                resolution="960x540",
-                fps=15,
+                resolution=f"{DEMO_WIDTH}x{DEMO_HEIGHT}",
+                fps=DEMO_FPS,
                 map_x=0.2,
                 map_y=0.35,
                 ai_enabled=True,
@@ -123,8 +126,8 @@ def seed_database(force: bool = False):
                 source_type="file",
                 source_uri="sample-data/videos/parking.mp4",
                 status="online",
-                resolution="960x540",
-                fps=15,
+                resolution=f"{DEMO_WIDTH}x{DEMO_HEIGHT}",
+                fps=DEMO_FPS,
                 map_x=0.55,
                 map_y=0.25,
                 ai_enabled=True,
@@ -137,8 +140,8 @@ def seed_database(force: bool = False):
                 source_type="file",
                 source_uri="sample-data/videos/lobby.mp4",
                 status="online",
-                resolution="960x540",
-                fps=15,
+                resolution=f"{DEMO_WIDTH}x{DEMO_HEIGHT}",
+                fps=DEMO_FPS,
                 map_x=0.4,
                 map_y=0.55,
                 ai_enabled=True,
@@ -151,8 +154,8 @@ def seed_database(force: bool = False):
                 source_type="file",
                 source_uri="sample-data/videos/warehouse.mp4",
                 status="online",
-                resolution="960x540",
-                fps=15,
+                resolution=f"{DEMO_WIDTH}x{DEMO_HEIGHT}",
+                fps=DEMO_FPS,
                 map_x=0.75,
                 map_y=0.65,
                 ai_enabled=True,
